@@ -30,7 +30,7 @@ exclude_list=["unsigned int", "bool"]
 alternate_variable=[r"\(\s*void\s?\*\*\s*\)\(\s*[*&]?temp_\d+\s*\)",r"\(\s*size_t\s*\)\(\s*[*&]?temp_\d+\s*\)",r"\(?\s*[*&]?state\d+_\d+\s*\)?",r"\(?\s*[*&]?temp_\d+\s*\)?",r"\(?\s*[*&]?omni_virtualcode_\d+\s*\)?", r"\s*&argv_\d+\s*", r"\s*&argc_\d+\s*", r"\s*&test_\d+\s*"]
 
 OnlyControlFlow=False
-FunctionExcludeFlag=False
+
 
 def exclude(line, ex_list=exclude_list):
    for pattern in ex_list:
@@ -85,15 +85,9 @@ def simple(line):
          line=str(sy.simplify(line))
       except:  
          line=str(eval(line))
-         #print("HELLO")
-         #print("@@"+line+"\n\n")
       
    finally:
-      #print("&&"+line+"\n")
-      #temp=set(re.findall(r"\s*[^_\[]\d+\s*", line))
       temp=set(re.findall(r"\s*[-]?\d+\s*", line))
-     
-      #print(temp)
       for i in temp:
          if "-" in i:
             line=re.sub(i, i.split("-")[0]+"-(unsigned int) "+i.split("-")[1],line,1)
@@ -117,6 +111,76 @@ def find_function(str):
          return False
    return True
 
+def UpdateOptimization(arg):
+   global OptimizedFlag
+   global OptimizingStatement
+   global LeftHandSideList
+
+   if not arg[0] in LeftHandSideList:
+      if arg[0] in ExceptList:
+         LeftHandSideList[arg[0]]=[ReadLine,False]
+      else:
+         LeftHandSideList[arg[0]]=[ReadLine,True]
+   else:
+      if(LeftHandSideList[arg[0]][1]) and arg[0].find("*")==-1:
+         OptimizingStatement = LeftHandSideList[arg[0]][0]
+         OptimizedFlag = True
+
+      if arg[0] in ExceptList:
+         LeftHandSideList[arg[0]]= [ReadLine,False]
+      else:
+         LeftHandSideList[arg[0]]= [ReadLine,True]
+
+
+def RemoveListDel(arg):
+   global LeftHandSideList
+   RemoveList=[]
+
+   for i in LeftHandSideList:
+      temp_arg=re.findall(r"([*&]?temp_\d*)",LeftHandSideList[i][0])
+      for j in range(1, len(temp_arg)):
+         if temp_arg[j]==arg[0]:
+            RemoveList.append(i)
+   for i in RemoveList:
+      if i in LeftHandSideList:
+         del LeftHandSideList[i]
+
+def Propagation(arg, index):
+   global LeftHandSideList
+   global PropagationFlag
+   global ReadLine
+
+   MakeFalseFlag=True
+   sub_target=arg[index]
+   if sub_target.find("*") != -1:
+      sub_target=sub_target.split("*")[-1]
+
+   if sub_target in LeftHandSideList:
+      if re.search(r"\[.*\]",re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]) is None and find_function(re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]):
+         FunctionExcludeFlag=False
+         for i in FunctionList:
+            if i in LeftHandSideList[sub_target][0]:
+               FunctionExcludeFlag=True
+               break
+         if "bool" not in LeftHandSideList[sub_target][0] and FunctionExcludeFlag is False:
+            if arg[0] != sub_target:
+               PropagationFlag = True
+               ReadLine = re.sub(re.escape(sub_target), '('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine)
+               MakeFalseFlag=False
+            else:
+               PropagationFlag = True
+               ReadLine = re.sub("\S\s*"+re.escape(sub_target), re.search(r'(\S\s*)'+re.escape(sub_target), ReadLine).group(1)+'('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine, 1)
+               MakeFalseFlag=False 
+
+      if MakeFalseFlag==True:
+         if arg[index] in LeftHandSideList:
+            LeftHandSideList[arg[index]][1]=False
+
+def AddressDel(arg, index):
+   global LeftHandSideList
+   if arg[index].find("&")!=-1 and arg[index].split("&")[-1] in LeftHandSideList:
+      del LeftHandSideList[arg[index].split("&")[-1]]
+
 def StmtAnalysis(arg):
    global OptimizedFlag
    global OptimizingStatement
@@ -124,250 +188,45 @@ def StmtAnalysis(arg):
    global PropagtionOptimizedCounter
    global PropagationFlag
    global ReadLine
-   global FunctionExcludeFlag
-
+ 
    ArgNum=len(arg)
-   
+
    if ArgNum == 1:
-      if not arg[0] in LeftHandSideList:
-         if arg[0] in ExceptList:
-            LeftHandSideList[arg[0]]=[ReadLine,False]
-         else:
-            LeftHandSideList[arg[0]]=[ReadLine,True]
-      else:
-         if(LeftHandSideList[arg[0]][1]):# and arg[0].find("*")==-1): 
-            OptimizingStatement = LeftHandSideList[arg[0]][0]
-            OptimizedFlag = True
-
-         if arg[0] in ExceptList:
-            LeftHandSideList[arg[0]]= [ReadLine,False]
-         else:
-            LeftHandSideList[arg[0]]= [ReadLine,True]
-
-      RemoveList=[]
-      for i in LeftHandSideList:
-         temp_arg=re.findall(r"([*&]?temp_\d*)",LeftHandSideList[i][0])
-         for j in range(1, len(temp_arg)):
-            if temp_arg[j]==arg[0]:
-               RemoveList.append(i)
-      for i in RemoveList:
-         del LeftHandSideList[i]
+      UpdateOptimization(arg)
+      RemoveListDel(arg)
 
    if ArgNum == 2:
       if(re.match(r"\s*\*temp_\d+\s*=\s*\(?\s*&temp_\d+\s*\)?\s*;\s*",ReadLine)):
          if arg[1].split("&")[-1] not in ExceptList:
             ExceptList.append(arg[1].split("&")[-1])
+      
       if arg[0].find("*")!=-1:
          if arg[0].split("*")[-1] in LeftHandSideList:
-            #print(ReadLine+"-->"+arg[0].split("*")[-1]+"-->"+LeftHandSideList[arg[0].split("*")[-1]][0])
-            LeftHandSideList[arg[0].split("*")[-1]][1]=False
+             LeftHandSideList[arg[0].split("*")[-1]][1]=False
 
-      if arg[1] in LeftHandSideList:
-         LeftHandSideList[arg[1]][1]=False
-      if arg[1].find('*')!=-1:
-         if arg[1].split("*")[-1] in LeftHandSideList:
-            LeftHandSideList[arg[1].split("*")[-1]][1]=False
-      if arg[1].find('&')!=-1:
-         if arg[1].split("&")[-1] in LeftHandSideList:
-            LeftHandSideList[arg[1].split("&")[-1]][1]=False
-      
-
-      sub_target=arg[1]
-      if sub_target.find("*") != -1:
-         sub_target=sub_target.split("*")[-1]
-
-      if sub_target in LeftHandSideList and re.search(r"\[.*\]",re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]) is None and find_function(re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]):
-         FunctionExcludeFlag=False
-         for i in FunctionList:
-            if i in ReadLine:
-               FunctionExcludeFlag=True
-               break
-         if "bool" not in LeftHandSideList[sub_target][0] and FunctionExcludeFlag is False and LeftHandSideList[sub_target][0]:
-            if arg[0] != sub_target:
-               PropagationFlag = True
-               ReadLine = re.sub(re.escape(sub_target), '('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine)
-               
-            else:
-               PropagationFlag = True
-               ReadLine = re.sub("\S\s*"+re.escape(sub_target), re.search(r'(\S\s*)'+re.escape(sub_target), ReadLine).group(1)+'('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine, 1)
-         
-      if arg[1].find("&")!=-1 and arg[1].split("&")[-1] in LeftHandSideList:
-         del LeftHandSideList[arg[1].split("&")[-1]]
-
-      temp_arg=re.findall(r"([*&]?temp_\d*)",ReadLine)
-      for i in range(1, len(temp_arg)):
-         if temp_arg[i]==arg[0]:
-            if arg[0] in LeftHandSideList:
-               del LeftHandSideList[arg[0]]
-            return     
-   
-      
-      if not arg[0] in LeftHandSideList:
-         if arg[0] in ExceptList:
-            LeftHandSideList[arg[0]]= [ReadLine,False]
-         else:
-            LeftHandSideList[arg[0]]= [ReadLine,True]
-         
-      else:
-         if(LeftHandSideList[arg[0]][1]) and arg[0].find("*")==-1:
-            OptimizingStatement = LeftHandSideList[arg[0]][0]
-            OptimizedFlag = True
-
-         if arg[0] in ExceptList:
-            LeftHandSideList[arg[0]]= [ReadLine,False]
-         else:
-            LeftHandSideList[arg[0]]= [ReadLine,True]
-      
-      RemoveList=[]
-      for i in LeftHandSideList:
-         temp_arg=re.findall(r"([*&]?temp_\d*)",LeftHandSideList[i][0])
-         for j in range(1, len(temp_arg)):
-            if temp_arg[j]==arg[0]:
-               RemoveList.append(i)
-      for i in RemoveList:
-         if i in LeftHandSideList:
-            del LeftHandSideList[i]
+      Propagation(arg, 1)
+      AddressDel(arg,1)
+      UpdateOptimization(arg)
+      RemoveListDel(arg)
                
    if ArgNum == 3:
-
-      
-
       if arg[0].find("*")!=-1:
          if arg[0].split("*")[-1] in LeftHandSideList:
             LeftHandSideList[arg[0].split("*")[-1]][1]=False
-
-      if arg[1] in LeftHandSideList:
-         LeftHandSideList[arg[1]][1]=False
-
-      if arg[1].find('*')!=-1:
-         if arg[1].split("*")[-1] in LeftHandSideList:
-            LeftHandSideList[arg[1].split("*")[-1]][1]=False
-      if arg[1].find('&')!=-1:
-         if arg[1].split("&")[-1] in LeftHandSideList:
-            LeftHandSideList[arg[1].split("&")[-1]][1]=False
       
-      sub_target=arg[1]
-
-      if sub_target.find("*") != -1:
-         sub_target=sub_target.split("*")[-1]
-
-      if sub_target in LeftHandSideList and re.search(r"\[.*\]",re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]) is None and find_function(re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]):
-         FunctionExcludeFlag=False
-         for i in FunctionList:
-            if i in LeftHandSideList[sub_target][0]:
-               FunctionExcludeFlag=True
-
-         if "bool" not in LeftHandSideList[sub_target][0] and FunctionExcludeFlag is False:
-            if arg[0] != sub_target:
-               PropagationFlag = True
-               ReadLine = re.sub(re.escape(sub_target), '('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine)
-               
-            else:
-               PropagationFlag = True
-               ReadLine = re.sub("\S\s*"+re.escape(sub_target), re.search(r'(\S\s*)'+re.escape(sub_target), ReadLine).group(1)+'('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine, 1)
-
-      if arg[2] in LeftHandSideList:
-         LeftHandSideList[arg[2]][1]=False
-
-      if arg[2].find('*')!=-1:
-         if arg[2].split("*")[-1] in LeftHandSideList:
-            LeftHandSideList[arg[2].split("*")[-1]][1]=False
-      if arg[2].find('&')!=-1:
-         if arg[2].split("&")[-1] in LeftHandSideList:
-            LeftHandSideList[arg[2].split("&")[-1]][1]=False
-
-
-      sub_target=arg[2]
-
-      if sub_target.find("*") != -1:
-         sub_target=sub_target.split("*")[-1]
-
-      if sub_target in LeftHandSideList and re.search(r"\[.*\]",re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]) is None and find_function(re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]):
-         FunctionExcludeFlag=False
-         for i in FunctionList:
-            if i in LeftHandSideList[sub_target][0]:
-               FunctionExcludeFlag=True
-
-         if "bool" not in LeftHandSideList[sub_target][0] and FunctionExcludeFlag is False:
-            if arg[0] != sub_target:
-               PropagationFlag = True
-               ReadLine = re.sub(re.escape(sub_target), '('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine)
-               
-            else:
-               PropagationFlag = True
-               ReadLine = re.sub("\S\s*"+re.escape(sub_target), re.search(r'(\S\s*)'+re.escape(sub_target), ReadLine).group(1)+'('+re.findall(r"=([\W\w]*);",LeftHandSideList[sub_target][0])[0]+')', ReadLine, 1)
-         
-      if arg[1].find("&")!=-1 and arg[1].split("&")[-1] in LeftHandSideList:
-         del LeftHandSideList[arg[1].split("&")[-1]]
-      if arg[2].find("&")!=-1 and arg[2].split("&")[-1] in LeftHandSideList:
-         del LeftHandSideList[arg[2].split("&")[-1]]
-
-      temp_arg=re.findall(r"([*&]?temp_\d*)",ReadLine)
-      for i in range(1, len(temp_arg)):
-         if temp_arg[i]==arg[0]:
-            if arg[0] in LeftHandSideList:
-               del LeftHandSideList[arg[0]]
-            return
-   
-      if not arg[0] in LeftHandSideList:
-         if arg[0] in ExceptList:
-            LeftHandSideList[arg[0]]= [ReadLine,False]
-         else:
-            LeftHandSideList[arg[0]]= [ReadLine,True]
-
-      else:
-         if(LeftHandSideList[arg[0]][1] and arg[0].find("*")==-1):
-            OptimizingStatement = LeftHandSideList[arg[0]][0]
-            OptimizedFlag = True
-
-         if arg[0] in ExceptList:
-            LeftHandSideList[arg[0]]= [ReadLine,False]
-         else:
-            LeftHandSideList[arg[0]]= [ReadLine,True]
-      
-
-      RemoveList=[]
-      for i in LeftHandSideList:
-         temp_arg=re.findall(r"([*&]?temp_\d*)",LeftHandSideList[i][0])
-         for j in range(1, len(temp_arg)):
-            if temp_arg[j]==arg[0]:
-               RemoveList.append(i)
-      for i in RemoveList:
-         del LeftHandSideList[i]
+      Propagation(arg,1)
+      Propagation(arg,2)
+      AddressDel(arg,1)
+      AddressDel(arg,2)
+      UpdateOptimization(arg)
+      RemoveListDel(arg)
       
    if ArgNum == 4:
       if arg[0] in LeftHandSideList:
          del LeftHandSideList[arg[0]]
-      if arg[1].find("&")!=-1 and arg[1].split("&")[-1] in LeftHandSideList:
-         del LeftHandSideList[arg[1].split("&")[-1]]
-      if arg[2].find("&")!=-1 and arg[2].split("&")[-1] in LeftHandSideList:
-         del LeftHandSideList[arg[2].split("&")[-1]]
-      if arg[3].find("&")!=-1 and arg[3].split("&")[-1] in LeftHandSideList:
-         del LeftHandSideList[arg[3].split("&")[-1]]
-      if arg[1] in LeftHandSideList:
-         LeftHandSideList[arg[1]][1]=False
-      if arg[2] in LeftHandSideList:
-         LeftHandSideList[arg[2]][1]=False
-      if arg[3] in LeftHandSideList:
-         LeftHandSideList[arg[3]][1]=False
-
-      if arg[1].find("*") != -1 and arg[1].split("*")[-1] in LeftHandSideList:
-         LeftHandSideList[arg[1].split("*")[-1]][1]=False
-            
-      if arg[1].find("&") != -1 and arg[1].split("&")[-1] in LeftHandSideList:
-         LeftHandSideList[arg[1].split("&")[-1]][1]=False
-      
-      if arg[2].find("*") != -1 and arg[2].split("*")[-1] in LeftHandSideList:
-         LeftHandSideList[arg[2].split("*")[-1]][1]=False
-            
-      if arg[2].find("&") != -1 and arg[2].split("&")[-1] in LeftHandSideList:
-         LeftHandSideList[arg[2].split("&")[-1]][1]=False
-      
-      if arg[3].find("*") != -1 and arg[3].split("*")[-1] in LeftHandSideList:
-         LeftHandSideList[arg[3].split("*")[-1]][1]=False
-            
-      if arg[3].find("&") != -1 and arg[3].split("&")[-1] in LeftHandSideList:
-         LeftHandSideList[arg[3].split("&")[-1]][1]=False
+      AddressDel(arg,1)
+      AddressDel(arg,2)
+      AddressDel(arg,3)
       
 def Compile(SourceCodeName, SourceCode):
    # GCC is Needed 
