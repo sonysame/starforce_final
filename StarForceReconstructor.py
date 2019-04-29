@@ -128,6 +128,7 @@ def UpdateOptimization(arg):
 
       if arg[0] in ExceptList:
          LeftHandSideList[arg[0]]= [ReadLine,False]
+         ExceptList.remove(arg[0])
       else:
          LeftHandSideList[arg[0]]= [ReadLine,True]
 
@@ -161,7 +162,7 @@ def Propagation(arg, index):
          for i in FunctionList:
             if i in LeftHandSideList[sub_target][0]:
                FunctionExcludeFlag=True
-               break
+            
          if "bool" not in LeftHandSideList[sub_target][0] and FunctionExcludeFlag is False:
             if arg[0] != sub_target:
                PropagationFlag = True
@@ -204,8 +205,9 @@ def StmtAnalysis(arg):
          if arg[0].split("*")[-1] in LeftHandSideList:
              LeftHandSideList[arg[0].split("*")[-1]][1]=False
 
-      Propagation(arg, 1)
+     
       AddressDel(arg,1)
+      Propagation(arg, 1)
       UpdateOptimization(arg)
       RemoveListDel(arg)
                
@@ -214,19 +216,29 @@ def StmtAnalysis(arg):
          if arg[0].split("*")[-1] in LeftHandSideList:
             LeftHandSideList[arg[0].split("*")[-1]][1]=False
       
-      Propagation(arg,1)
-      Propagation(arg,2)
+      
       AddressDel(arg,1)
       AddressDel(arg,2)
+      Propagation(arg,1)
+      Propagation(arg,2)
       UpdateOptimization(arg)
       RemoveListDel(arg)
       
    if ArgNum == 4:
       if arg[0] in LeftHandSideList:
          del LeftHandSideList[arg[0]]
+      #if arg[0].find("*")!=-1:
+      #   if arg[0].split("*")[-1] in LeftHandSideList:
+      #      LeftHandSideList[arg[0].split("*")[-1]][1]=False
       AddressDel(arg,1)
       AddressDel(arg,2)
       AddressDel(arg,3)
+      Propagation(arg,1)
+      Propagation(arg,2)
+      Propagation(arg,3)
+      UpdateOptimization(arg)
+      RemoveListDel(arg)
+      
       
 def Compile(SourceCodeName, SourceCode):
    # GCC is Needed 
