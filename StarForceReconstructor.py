@@ -25,12 +25,11 @@ FunctionFlag2 = False
 OptimizedLineCounter = 0 # Writing the Number of Line Deleted by Our Optimization
 PropagtionOptimizedCounter = 0
 
-used_function=["printf"]
+used_function=[]
 exclude_list=["unsigned int", "bool"]
 alternate_variable=[r"\(\s*void\s?\*\*\s*\)\(\s*[*&]?temp_\d+\s*\)",r"\(\s*size_t\s*\)\(\s*[*&]?temp_\d+\s*\)",r"\(?\s*[*&]?state\d+_\d+\s*\)?",r"\(?\s*[*&]?temp_\d+\s*\)?",r"\(?\s*[*&]?omni_virtualcode_\d+\s*\)?", r"\s*&argv_\d+\s*", r"\s*&argc_\d+\s*", r"\s*&test_\d+\s*"]
 
 OnlyControlFlow=False
-
 
 def exclude(line, ex_list=exclude_list):
    for pattern in ex_list:
@@ -102,6 +101,13 @@ def simple(line):
       line=front+"= "+line
       
       return line+back+"\n"
+
+def except_function(str):
+   starforce_signature=['argc','argv','test',' int','(int','int)','ptrdiff_t','void','state','^','>','<','0xFFFFFFFF','bool','omni_virtualcode_','size_t','0u','1u','2u','3u','4u','5u','6u','7u','8u','9u','0','1','2','3','4','5','6','7','8','9','-', '*','&', '=', '!', '+', '-', '*', '/', ';', '%', 'temp_','char', 'double', 'unsigned', 'signed', 'const','(', ')','[',']','_','|',',']
+   for i in starforce_signature:
+      str=str.replace(i,"").strip()
+   if str is not "" and str not in used_function:
+      used_function.append(str)
 
 def find_function(str):
    global used_function
@@ -189,9 +195,14 @@ def StmtAnalysis(arg):
    global PropagtionOptimizedCounter
    global PropagationFlag
    global ReadLine
- 
-   ArgNum=len(arg)
+   
 
+   ArgNum=len(arg)
+   if ArgNum==0:
+      return 
+   if(Round==1):
+      except_function(ReadLine)
+            
    if ArgNum == 1:
       UpdateOptimization(arg)
       RemoveListDel(arg)
@@ -225,11 +236,12 @@ def StmtAnalysis(arg):
       RemoveListDel(arg)
       
    if ArgNum == 4:
-      if arg[0] in LeftHandSideList:
+      #temp_62 = ( int )( ( size_t )( temp_62 ) + ( ( ( size_t )( temp_62 ) << 31 ) << 1 ) + ( ( ( ( size_t )( temp_62 ) << 31 ) << 1 ) >> 15 ) );
+      if arg[0] in LeftHandSideList and "size_t" in ReadLine:
          del LeftHandSideList[arg[0]]
-      #if arg[0].find("*")!=-1:
-      #   if arg[0].split("*")[-1] in LeftHandSideList:
-      #      LeftHandSideList[arg[0].split("*")[-1]][1]=False
+      if arg[0].find("*")!=-1:
+         if arg[0].split("*")[-1] in LeftHandSideList:
+            LeftHandSideList[arg[0].split("*")[-1]][1]=False
       AddressDel(arg,1)
       AddressDel(arg,2)
       AddressDel(arg,3)
@@ -357,9 +369,11 @@ def Optimization(SourceCode):
             LabelList.append(RecordIndex) # Label Number Append
          
          if not OnlyControlFlow:
+            
             StmtAnalysis(arg)
 
          if SettingFlag:
+            
             LabelDict[RecordIndex] += ReadLine
             if OptimizedFlag:
                LabelDict[RecordIndex] = ''.join(LabelDict[RecordIndex].rsplit(OptimizingStatement, 1))
@@ -528,5 +542,4 @@ if __name__=="__main__":
       FinalSourceCode.close()
       Compile(FinalCodeName.split(".")[0], FinalCodeName)
       Execute(FinalCodeName.split(".")[0], False)
-
       Error.close()
